@@ -13,7 +13,7 @@ const TopNavbar = () => {
             className="flex items-center space-x-2"
           >
             <Music className="w-6 h-6 text-green-400" />
-            <span className="text-xl font-bold text-green-400">Berserk</span>
+            <span className="text-xl font-bold text-green-400">Songify</span>
           </Link>
 
           {/* Search Bar */}

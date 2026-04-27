@@ -57,6 +57,20 @@ class AudioService {
           this.callbacks.onNext();
         }
       });
+      
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        if (this.audioElement) {
+          const newTime = Math.min(
+            details.seekTime,
+            this.audioElement.duration || 0
+          );
+          if (details.fastSeek && "fastSeek" in this.audioElement) {
+            this.audioElement.fastSeek(newTime);
+          } else {
+            this.audioElement.currentTime = newTime;
+          }
+        }
+      });
     }
   }
 
@@ -68,6 +82,18 @@ class AudioService {
     // Add event listeners
     this.audioElement.addEventListener("ended", () => {
       this.handleTrackEnd();
+    });
+
+    this.audioElement.addEventListener("timeupdate", () => {
+      if ("mediaSession" in navigator && "setPositionState" in navigator.mediaSession) {
+        if (Number.isFinite(this.audioElement.duration) && Number.isFinite(this.audioElement.currentTime)) {
+          navigator.mediaSession.setPositionState({
+            duration: this.audioElement.duration,
+            playbackRate: this.audioElement.playbackRate || 1,
+            position: this.audioElement.currentTime
+          });
+        }
+      }
     });
 
     // Handle visibility change for background playback

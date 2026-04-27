@@ -1,6 +1,6 @@
 {
-  "appId": "com.berserk.app",
-  "appName": "Berserk",
+  "appId": "com.songify.app",
+  "appName": "Songify",
   "webDir": "dist",
   "plugins": {
     "SplashScreen": {

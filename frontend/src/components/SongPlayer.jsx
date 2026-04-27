@@ -12,6 +12,7 @@ import {
   Download,
   Loader2,
   Check,
+  Plus,
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import { useNavigate } from "react-router-dom";
@@ -44,6 +45,8 @@ const SongPlayer = () => {
     fetchData,
     open,
     addToHistory,
+    playlist,
+    togglePlaylist,
   } = useUser();
   const [isPlaying, setIsPlaying] = useState(false);
   const [songCurrentTime, setSongCurrentTime] = useState(0);
@@ -53,6 +56,15 @@ const SongPlayer = () => {
   const [downloadStatus, setDownloadStatus] = useState("idle"); // idle | downloading | processing | saving | done | error
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadError, setDownloadError] = useState(null);
+  const [isDownloaded, setIsDownloaded] = useState(false);
+
+  useEffect(() => {
+    if (selectedSong) {
+      const downloads = JSON.parse(localStorage.getItem("downloads") || "[]");
+      const videoId = selectedSong?.id?.videoId || selectedSong?.id;
+      setIsDownloaded(downloads.some((d) => (d.id?.videoId || d.id) === videoId || d.id === videoId));
+    }
+  }, [selectedSong, downloadStatus]);
 
   // Keep refs in sync for notification handlers (avoids stale closures)
   stateRef.current = { selectedIndex, songs };
@@ -218,8 +230,8 @@ const SongPlayer = () => {
         hasClose: false, // show close button, optional, default: false
 
         // iOS only, all optional
-        duration: 60, // default: 0
-        elapsed: 10, // default: 0
+        duration: audioService.audioElement ? Math.floor(audioService.audioElement.duration || 0) : 0, 
+        elapsed: audioService.audioElement ? Math.floor(audioService.audioElement.currentTime || 0) : 0, 
         hasSkipForward: true, // default: false. true value overrides hasNext.
         hasSkipBackward: true, // default: false. true value overrides hasPrev.
         skipForwardInterval: 15, // default: 15.
@@ -356,6 +368,9 @@ const SongPlayer = () => {
       if (el.duration && Number.isFinite(el.duration)) {
         setSongDuration(el.duration);
       }
+      if (Number.isFinite(el.currentTime)) {
+        CapacitorMusicControls.updateIsPlaying({ isPlaying: !el.paused, elapsed: Math.floor(el.currentTime) });
+      }
     };
 
     const handleDurationChange = () => {
@@ -377,7 +392,7 @@ const SongPlayer = () => {
   }, [open, audioService.audioElement]);
 
   const download = async () => {
-    if (!audioUrl || !selectedSong?.snippet) return;
+    if (!audioUrl || !selectedSong?.snippet || isDownloaded) return;
 
     setDownloadError(null);
     setDownloadStatus("downloading");
@@ -676,28 +691,50 @@ const SongPlayer = () => {
                 )}
                 <div className="flex items-center justify-between">
                   <span />
-                  <button
-                    onClick={download}
-                    disabled={
-                      rapidProcessing ||
-                      !audioUrl ||
-                      !selectedSong?.snippet ||
-                      downloadStatus === "downloading" ||
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => togglePlaylist(selectedSong)}
+                      disabled={rapidProcessing || !selectedSong?.snippet}
+                      className="w-10 h-10 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed bg-zinc-800 hover:bg-zinc-700 shadow-sm"
+                    >
+                      {playlist?.some(
+                        (p) =>
+                          (p?.id?.videoId ?? p?.id) ===
+                          (selectedSong?.id?.videoId ?? selectedSong?.id)
+                      ) ? (
+                        <Check className="w-5 h-5 text-green-500" />
+                      ) : (
+                        <Plus className="w-5 h-5 text-zinc-300" />
+                      )}
+                    </button>
+                    <button
+                      onClick={download}
+                      disabled={
+                        rapidProcessing ||
+                        !audioUrl ||
+                        !selectedSong?.snippet ||
+                        downloadStatus === "downloading" ||
+                        downloadStatus === "processing" ||
+                        downloadStatus === "saving" ||
+                        isDownloaded
+                      }
+                      className={`w-10 h-10 flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm ${
+                        isDownloaded || downloadStatus === "done" 
+                          ? "bg-green-500/20 text-green-500" 
+                          : "bg-zinc-100 text-zinc-900 hover:bg-zinc-300"
+                      }`}
+                    >
+                      {downloadStatus === "downloading" ||
                       downloadStatus === "processing" ||
-                      downloadStatus === "saving"
-                    }
-                    className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-500/10 bg-white rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-                  >
-                    {downloadStatus === "downloading" ||
-                    downloadStatus === "processing" ||
-                    downloadStatus === "saving" ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : downloadStatus === "done" ? (
-                      <Check className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <Download className="w-10 h-5" />
-                    )}
-                  </button>
+                      downloadStatus === "saving" ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-green-500" />
+                      ) : isDownloaded || downloadStatus === "done" ? (
+                        <Check className="w-5 h-5" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="border-t border-green-500/20 "></div>
@@ -713,70 +750,58 @@ const SongPlayer = () => {
         <>
           <motion.div
             ref={playerRef}
-            drag
-            dragMomentum={false}
-            dragElastic={1}
-            dragConstraints={dragConstraints}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            // Initial position - start in bottom right with some padding
-            initial={{ x: -0, y: -30 }}
-            // Animation when component mounts
-            animate={{ x: -0, y: -10 }}
             exit={{ opacity: 0 }}
             // transition={{type: "spring", stiffness: 100}}
-            className="fixed bottom-18  right-0 bg-zinc-800 w-60 h-60 rounded-xl text-white z-50 border border-green-500/20 shadow-lg"
+            className="fixed bottom-[calc(71px+env(safe-area-inset-bottom))] right-0 bg-zinc-800 w-full h-20 text-white z-30 border-t border-green-500/20 shadow-lg cursor-pointer"
             onClick={handlePlayerClick}
           >
-            <div className="p-3 space-y-2">
-              <div
-                className="relative w-full h-32 mx-auto overflow-hidden rounded-lg bg-zinc-800"
-                onPointerDown={(e) => {
-                  if (playerRef.current) {
-                    playerRef.current._dragOriginElement = e.target;
-                  }
-                }}
-              >
-                {rapidProcessing ? (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Loader2 className="w-10 h-10 text-green-500 animate-spin" />
-                  </div>
-                ) : (
-                  <img
-                    src={selectedSong?.snippet?.thumbnails?.high?.url}
-                    alt={selectedSong?.snippet?.title}
-                    className="w-full h-full object-cover"
-                    draggable="false"
-                  />
-                )}
-                <div className="absolute top-2 left-0 right-0 flex justify-center">
-                  <div className="bg-black/30 backdrop-blur-sm p-1 rounded-full">
-                    <GripHorizontal className="w-5 h-5 text-white/70" />
-                  </div>
+            <div className="h-full px-3 flex items-center justify-between">
+              <div className="flex items-center min-w-0 flex-1">
+                {/* Thumbnail */}
+                <div
+                  className="relative w-14 h-14 flex-shrink-0 overflow-hidden rounded-lg bg-zinc-900"
+                  onPointerDown={(e) => {
+                    if (playerRef.current) {
+                      playerRef.current._dragOriginElement = e.target;
+                    }
+                  }}
+                >
+                  {rapidProcessing ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
+                    </div>
+                  ) : (
+                    <img
+                      src={selectedSong?.snippet?.thumbnails?.high?.url}
+                      alt={selectedSong?.snippet?.title}
+                      className="w-full h-full object-cover"
+                      draggable="false"
+                    />
+                  )}
+                </div>
+
+                {/* Song Info */}
+                <div className="flex-1 min-w-0 ml-3 flex flex-col justify-center">
+                  {rapidProcessing ? (
+                    <div className="space-y-1 animate-pulse">
+                      <div className="h-3 bg-zinc-700 rounded w-full" />
+                      <div className="h-2.5 bg-zinc-800 rounded w-2/3" />
+                    </div>
+                  ) : (
+                    <>
+                      <h3 className="text-green-300 text-sm font-medium truncate">
+                        {selectedSong?.snippet?.title || "No title"}
+                      </h3>
+                      <p className="text-green-400/60 text-xs truncate">
+                        {selectedSong?.snippet?.channelTitle || "Unknown Channel"}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Song Info */}
-              <div className="space-y-0.5 text-center min-h-[2.5rem]">
-                {rapidProcessing ? (
-                  <div className="space-y-1 animate-pulse">
-                    <div className="h-3 bg-zinc-700 rounded w-full" />
-                    <div className="h-2.5 bg-zinc-800 rounded w-2/3 mx-auto" />
-                  </div>
-                ) : (
-                  <>
-                    <h3 className="text-green-300 text-sm font-medium truncate">
-                      {selectedSong?.snippet?.title || "No title"}
-                    </h3>
-                    <p className="text-green-400/60 text-xs truncate">
-                      {selectedSong?.snippet?.channelTitle || "Unknown Channel"}
-                    </p>
-                  </>
-                )}
-              </div>
-
               {/* Playback Controls */}
-              <div className="flex items-center justify-center gap-2 pt-1 border-t border-green-500/20">
+              <div className="flex items-center gap-3 ml-2 flex-shrink-0">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -784,9 +809,9 @@ const SongPlayer = () => {
                       onPrevious();
                   }}
                   disabled={rapidProcessing || (selectedIndex ?? 0) <= 0}
-                  className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-500/10 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  className="p-1 text-green-400 hover:text-green-300 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <SkipBack className="w-4 h-4" />
+                  <SkipBack className="w-10 h-10 bg-white rounded-full p-2" />
                 </button>
 
                 <button
@@ -795,14 +820,14 @@ const SongPlayer = () => {
                     if (!rapidProcessing) onPlayPause();
                   }}
                   disabled={rapidProcessing}
-                  className="p-2 text-green-400 hover:text-green-300 hover:bg-green-500/10 rounded-full transition-colors disabled:opacity-60 disabled:cursor-wait flex items-center justify-center min-w-[2rem] min-h-[2rem]"
+                  className="p-1 text-green-400 hover:text-green-300 rounded-full transition-colors disabled:opacity-60 disabled:cursor-wait flex items-center justify-center"
                 >
                   {rapidProcessing ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-10 h-10 bg-white rounded-full p-2 animate-spin" />
                   ) : isPlaying ? (
-                    <Pause className="w-5 h-5" />
+                    <Pause className="w-10 h-10 bg-white text-black rounded-full p-2" />
                   ) : (
-                    <Play className="w-5 h-5" />
+                    <Play className="w-10 h-10 bg-white text-black rounded-full p-2" />
                   )}
                 </button>
 
@@ -819,9 +844,9 @@ const SongPlayer = () => {
                     rapidProcessing ||
                     (selectedIndex ?? 0) >= (songs?.length ?? 1) - 1
                   }
-                  className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-500/10 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  className="p-1 text-green-400 hover:text-green-300 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <SkipForward className="w-4 h-4" />
+                  <SkipForward className="w-10 h-10 bg-white rounded-full p-2" />
                 </button>
               </div>
             </div>

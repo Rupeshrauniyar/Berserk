@@ -256,6 +256,38 @@ export const UserProvider = ({children}) => {
     });
   };
 
+  const PLAYLIST_KEY = "songify_playlist";
+  const loadPlaylist = () => {
+    try {
+      const raw = localStorage.getItem(PLAYLIST_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const [playlist, setPlaylist] = useState(() => loadPlaylist());
+
+  const togglePlaylist = (item) => {
+    if (!item) return;
+    const videoId = item?.id?.videoId ?? item?.id;
+    if (!videoId) return;
+
+    setPlaylist((prev) => {
+      const exists = prev.some((p) => (p?.id?.videoId ?? p?.id) === videoId);
+      let next;
+      if (exists) {
+        next = prev.filter((p) => (p?.id?.videoId ?? p?.id) !== videoId);
+      } else {
+        const normalized = { ...item, _addedAt: Date.now() };
+        next = [normalized, ...prev];
+      }
+      localStorage.setItem(PLAYLIST_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   const [selectedSong, setSelectedSong] = useState({});
   const [selectedIndex, setSelectedIndex] = useState();
   const [audioUrl, setAudioUrl] = useState(null);
@@ -355,6 +387,8 @@ export const UserProvider = ({children}) => {
     setOpen,
     history,
     addToHistory,
+    playlist,
+    togglePlaylist,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
